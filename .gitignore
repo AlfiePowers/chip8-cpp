@@ -1,0 +1,12 @@
+
+\.idea/
+
+cmake-build-debug/
+
+main\.cpp
+
+tetris\.c8
+
+test\.chip
+
+CMakeLists\.txt
