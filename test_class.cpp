@@ -93,14 +93,45 @@ int opcode5000(chip8* emulator){
     return false;
 }
 
+// Puts value of kk into register VX
+int opcode6000(chip8* emulator){
+    emulator->emulate(0x6010);
+    if(emulator->getRegister(0) == 0x0010){
+        std::cout << "Successfully loaded the value into the register" << std::endl;
+        return true;
+    }
+    return false;
+}
 
+// Adds constant to register
+int opcode7000(chip8* emulator){
+    emulator->setRegister(0, 0x0010);
+    emulator->emulate(0x7410);
+    if(emulator->getRegister(0) == 0x0020) {
+        std::cout << "Successfully added value to register 0" << std::endl;
+        return true;
+    }
+    return false;
+}
+
+// Stores value of register vy in register vx
+int opcode8000(chip8* emulator){
+    emulator->setRegister(0,0x0110);
+    emulator->setRegister(1,0x0011);
+    emulator->emulate(0x8104);
+    if(emulator->getRegister(1) == (emulator->getRegister(0) + 0x0011)){
+        std::cout << "Successfully copied VY into VX" << std::endl;
+    }else{
+        std::cout << "Failed to copy over VY into VX" << std::endl;
+    }
+}
 
 int main(int args, char** argv){
     FILE *file = fopen(argv[1], "rb");
     chip8 emulator(file);
     emulator.init();
 
-    opcode5000(&emulator);
+    opcode8000(&emulator);
 
     /*
     for(int i= 0;true;i++){
