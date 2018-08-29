@@ -1,12 +1,12 @@
 #ifndef CHIP8_CHIP8_H
 #define CHIP8_CHIP8_H
 
-
 #include <iostream>
 #include <assert.h>
 #include <stdlib.h>
 #include <bitset>
 #include <random>
+#include "SDL2/SDL.h"
 
 struct chip8 {
 private:
@@ -22,7 +22,19 @@ private:
     u_int16_t ip;
     u_int8_t sp;
 
+    u_int8_t soundTimer;
+    u_int8_t delayTimer;
+
     u_int8_t display[2048];
+
+    // SDL Window
+    SDL_Window *window;
+    SDL_Renderer *renderer;
+    SDL_Texture *texture;
+    Uint32 *pixels;
+    SDL_Event event;
+    int WIDTH = 1024;
+    int HEIGHT = 512;
 
 public:
     chip8(FILE *file){
@@ -52,6 +64,10 @@ public:
     FILE getFile(){return *file;}
     void init();
     void emulate(int i);
+
+    void draw(u_int16_t x, u_int16_t y);
+
+    void updateRender();
     void setDisplay(u_int16_t i, char value);
     u_int8_t getDisplay(u_int16_t i);
     u_int8_t getMemory(u_int16_t i);

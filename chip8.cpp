@@ -38,9 +38,25 @@ void chip8::init() {
               (sizeof(char) * 4096) << std::endl;
 
     // Loading in the fontset
-    for(u_int8_t i = 0; i < 80; i++){
+    for (u_int8_t i = 0; i < 80; i++) {
         memory[i] = fontSet[i];
     }
+
+    // Clearing the screen
+    memset(display, 0, 2048);
+
+    // Create the SDL Window:
+    SDL_Init(SDL_INIT_VIDEO);
+    window = SDL_CreateWindow("SDL2 Pixel Drawing",
+                              SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, WIDTH, HEIGHT, 0);
+    renderer = SDL_CreateRenderer(window, -1, 0);
+    texture = SDL_CreateTexture(renderer,
+                                SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, WIDTH, HEIGHT);
+    pixels = new Uint32[WIDTH * HEIGHT];
+    memset(pixels, 0, WIDTH * HEIGHT * sizeof(Uint32));
+
+    std::cout << "Created window" << std::endl;
+    bool quit = false;
 
 
     for (u_int16_t i = 0; i < 4096; i++) {
@@ -66,12 +82,12 @@ void chip8::emulate(int i) {
     if (i != 0) {
         this->opcode = static_cast<u_int16_t>(i);
     }
-    std::cout << "Current PC: " << pc << " Opcode: " << (opcode) << std::endl;
+    //std::cout << "Current PC: " << pc << " Opcode: " << (opcode & 0xF000) << std::endl;
     switch (opcode & 0xF000) {
         case 0x0000:
             switch (opcode & 0x000F) {
                 case 0x0000:        // Clear the screen
-                    for (u_int16_t di = 0; di < 2048; di++) { this->setDisplay(di, 0); }
+                    memset(display, 0, 2048);
                     pc += 2;
                     break;
                 case 0x000E:        // Return from stack call
@@ -84,17 +100,17 @@ void chip8::emulate(int i) {
             }
             break;
         case 0x1000:        // Jump to Address 1NNN
-            std::cout << "Jumping to address " << (opcode & 0x0FFF) << std::endl;
+            //std::cout << "Jumping to address " << (opcode & 0x0FFF) << std::endl;
             this->pc = static_cast<u_int16_t>(opcode & 0x0FFF);
             break;
         case 0x2000:        // Jump to subroutine at address NNN (max 16 levels)
-            std::cout << "Jumping to the subroutine at " << (opcode & 0x0FFF) << std::endl;
+            //std::cout << "Jumping to the subroutine at " << (opcode & 0x0FFF) << std::endl;
             this->stack[sp] = static_cast<u_int8_t>(pc);
             sp++;
             pc = static_cast<u_int16_t>(opcode & 0x0FFF);
             break;
         case 0x3000:        // 3XRR, Skip next instruction if register VX == Constant RR
-            std::cout << "Skipping next instruction!" << std::endl;
+            //std::cout << "Skipping next instruction!" << std::endl;
             register_store[(opcode & 0x0F00) / 256] == (opcode & 0x00FF) ? pc += 4 : pc += 2;
             break;
         case 0x4000:        // 4XRR, Skip next instruction if register VX != Constant RR
@@ -145,25 +161,27 @@ void chip8::emulate(int i) {
                     break;
                 case 0x0006:        // 8X06, Shift register VX to the right, LSB goes to VF
                     register_store[15] = static_cast<u_int8_t>(register_store[(opcode & 0x0F00) / 256] & 1);
-                    register_store[(opcode & 0x0F00) / 256]>>=1;
+                    register_store[(opcode & 0x0F00) / 256] >>= 1;
                     pc += 2;
                     break;
                 case 0x0007:        // 8XY7, subtract register VX from register VY, store in VX
                     if (register_store[(opcode & 0x0F00) / 256] < register_store[(opcode & 0x00F0) / 16]) {
                         register_store[15] = 1;
                     }
-                    register_store[(opcode & 0x0F00) / 256] = register_store[(opcode & 0x00F0) / 16] - register_store[(opcode & 0x0F00) / 256];
+                    register_store[(opcode & 0x0F00) / 256] =
+                            register_store[(opcode & 0x00F0) / 16] - register_store[(opcode & 0x0F00) / 256];
                     pc += 2;
                     break;
                 case 0x000E:        // 8X0E, shift register VX left, bit 7 stored into register VF
-                    register_store[15] = static_cast<u_int8_t>(register_store[(opcode & 0x0F00) / 256] >> (sizeof(u_int8_t)*8 - 1) & 1);
-                    register_store[(opcode & 0x0F00) / 256]<<=1;
+                    register_store[15] = static_cast<u_int8_t>(
+                            register_store[(opcode & 0x0F00) / 256] >> (sizeof(u_int8_t) * 8 - 1) & 1);
+                    register_store[(opcode & 0x0F00) / 256] <<= 1;
                     pc += 2;
                     break;
             }
             break;
         case 0x9000:        // 9XY0, skip next instruction if register VX != register VY
-            register_store[(opcode & 0x0F00) / 256] != register_store[(opcode & 0x00F0) / 16] ? pc+=4 : pc+=2;
+            register_store[(opcode & 0x0F00) / 256] != register_store[(opcode & 0x00F0) / 16] ? pc += 4 : pc += 2;
             break;
         case 0xA000:        // ANNN, Set IR with constant NNN
             ip = static_cast<u_int16_t>(opcode & 0x0FFF);
@@ -178,9 +196,30 @@ void chip8::emulate(int i) {
             pc += 2;
             break;
         case 0xD000:        // DXYN, Draws sprite at screen location (register VX, VY) height n
-            // TODO
+        {
+            u_int16_t x = register_store[(opcode & 0x0F00)];
+            u_int16_t y = register_store[(opcode & 0x00F0)];
+            u_int16_t height = opcode & 0x000F;
+            u_int16_t pixel;
+            register_store[0xF] = 0;
+            for (int yline = 0; yline < height; yline++) {
+                pixel = memory[ip + yline];
+                for (int xline = 0; xline < 8; xline++) {
+                    if ((pixel & (0x80 >> xline)) != 0) {
+                        if (display[(x + xline + ((y + yline) * 64))] == 1) {
+                            register_store[0xF] = 1;
+                        }
+                        if (display[x + xline + ((y + yline) * 64)] == 0) {
+                            draw(static_cast<u_int16_t>(x + xline), static_cast<u_int16_t>(y + yline));
+                            display[x + xline + ((y + yline) * 64)] ^= 1;
+                        }
+                    }
+                }
+            }
+            updateRender();
             pc += 2;
             break;
+        }
         case 0xE000:
             switch (opcode & 0xFFF0) {
                 case 0x000E:        // EX9E, Skip if key (register RX) pressed
@@ -194,7 +233,7 @@ void chip8::emulate(int i) {
             }
             break;
         case 0xF000:
-            switch (opcode & 0xFF00) {
+            switch (opcode & 0x00FF) {
                 case 0x0007:        // FR07, Get delay timer into VR
                     // TODO
                     pc += 2;
@@ -216,11 +255,13 @@ void chip8::emulate(int i) {
                     pc += 2;
                     break;
                 case 0x0029:        // FR29, Point IR to the sprite for hex char in vr
-                    // TODO
+                    ip = static_cast<u_int16_t>(register_store[(opcode & 0x0F00) >> 8] * 0x5);
                     pc += 2;
                     break;
                 case 0x0033:        // FR33, Store the bcd representation of register VR at location IR, IR + 1, IR + 2
-                    // TODO
+                    memory[ip] = register_store[(opcode & 0x0F00) >> 8] / 100;
+                    memory[ip + 1] = (register_store[(opcode & 0x0F00) >> 8] / 10) % 10;
+                    memory[ip + 2] = (register_store[(opcode & 0x0F00) >> 8] % 100) % 10;
                     pc += 2;
                     break;
                 case 0x0055:        // FR55, Store registers V0-VR at location IR onwards
@@ -231,6 +272,9 @@ void chip8::emulate(int i) {
                     // TODO
                     pc += 2;
                     break;
+                default:
+                    std::cout << "No such opcode" << std::endl;
+                    pc += 2;
             }
             break;
 
@@ -239,4 +283,28 @@ void chip8::emulate(int i) {
             pc += 2;
             break;
     }
+}
+
+void chip8::draw(u_int16_t x, u_int16_t y) {
+    for (u_int8_t i = 0; i < 16; i++) {
+        for (u_int8_t j = 0; j < 16; j++) {
+            pixels[(j + (y * 16)) * WIDTH + (i + (x * 16))] = 0xFFFFFF;
+        }
+    }
+}
+
+void chip8::updateRender() {
+    SDL_UpdateTexture(texture, NULL, pixels, WIDTH * sizeof(Uint32));
+    SDL_WaitEvent(&event);
+
+
+    switch (event.type) {
+        case SDL_QUIT:
+            break;
+        case SDL_SCANCODE_ESCAPE:
+            break;
+    }
+    SDL_RenderClear(renderer);
+    SDL_RenderCopy(renderer, texture, NULL, NULL);
+    SDL_RenderPresent(renderer);
 }
