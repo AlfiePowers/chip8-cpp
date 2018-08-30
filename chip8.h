@@ -71,6 +71,7 @@ public:
     void setDisplay(u_int16_t i, char value);
     u_int8_t getDisplay(u_int16_t i);
     u_int8_t getMemory(u_int16_t i);
+    SDL_Event getKeyboardEvent();
 
     // Functions for unit tests
     void setMemory(u_int16_t location, u_int8_t value);

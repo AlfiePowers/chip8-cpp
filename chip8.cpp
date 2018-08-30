@@ -26,6 +26,7 @@ void chip8::setRegister(u_int8_t registerindex, u_int8_t value) { register_store
 u_int8_t chip8::getRegister(u_int8_t registerIndex) { return register_store[registerIndex]; }
 
 void chip8::init() {
+    // Set the initial values
     this->pc = 0x200;
     this->opcode = 0;
     this->ip = 0;
@@ -35,9 +36,9 @@ void chip8::init() {
 
     size_t sizeOfROM = fread(buffer, sizeof(char), 4096, file);
     std::cout << "ROM Size: " << sizeOfROM << " - " <<
-              (sizeof(char) * 4096) << std::endl;
+              (sizeof(u_int8_t) * 4096) << std::endl;
 
-    // Loading in the fontset
+    // Loading in the font-set
     for (u_int8_t i = 0; i < 80; i++) {
         memory[i] = fontSet[i];
     }
@@ -56,25 +57,15 @@ void chip8::init() {
     memset(pixels, 0, WIDTH * HEIGHT * sizeof(Uint32));
 
     std::cout << "Created window" << std::endl;
-    bool quit = false;
 
-
+    // Load memory into right place
     for (u_int16_t i = 0; i < 4096; i++) {
         memory[i + 512] = (uint8_t) buffer[i]; // Load into memory starting
     }
 
+    // Close the file and free up the buffer
     fclose(file);
     free(buffer);
-
-    /*
-    for(u_int16_t i = 0; i < 2048; i++){
-        if(i % 64 == 0)
-            std::cout << "" << std::endl << i << ": ";
-        std::cout << memory[i] << "";
-    }
-    std::cout << "" << std::endl;
-     */
-    std::cout << (0x0F10 & 0x0F00) / 256 << std::endl;
 }
 
 void chip8::emulate(int i) {
@@ -82,7 +73,11 @@ void chip8::emulate(int i) {
     if (i != 0) {
         this->opcode = static_cast<u_int16_t>(i);
     }
-    //std::cout << "Current PC: " << pc << " Opcode: " << (opcode & 0xF000) << std::endl;
+
+    // TODO: Finish this to implement user input
+    getKeyboardEvent();
+
+    bool failedpc = false;  // TODO Remove testing var
     switch (opcode & 0xF000) {
         case 0x0000:
             switch (opcode & 0x000F) {
@@ -97,6 +92,7 @@ void chip8::emulate(int i) {
                     break;
                 default:
                     std::cout << "No such Opcode: " << opcode << std::endl;
+                    failedpc = true;
             }
             break;
         case 0x1000:        // Jump to Address 1NNN
@@ -197,19 +193,20 @@ void chip8::emulate(int i) {
             break;
         case 0xD000:        // DXYN, Draws sprite at screen location (register VX, VY) height n
         {
+            // Store the x and y in separate vars so we don't have to keep referencing the registers
             u_int16_t x = register_store[(opcode & 0x0F00)];
             u_int16_t y = register_store[(opcode & 0x00F0)];
-            u_int16_t height = opcode & 0x000F;
+            auto height = static_cast<u_int16_t>(opcode & 0x000F);
             u_int16_t pixel;
-            register_store[0xF] = 0;
+            register_store[0xF] = 0;        // Set the flag register to initially be 0
             for (int yline = 0; yline < height; yline++) {
-                pixel = memory[ip + yline];
-                for (int xline = 0; xline < 8; xline++) {
+                pixel = memory[ip + yline];     // Get pixel data out of mem
+                for (int xline = 0; xline < 8; xline++) {       // Spec says should be 8 bits in length
                     if ((pixel & (0x80 >> xline)) != 0) {
                         if (display[(x + xline + ((y + yline) * 64))] == 1) {
                             register_store[0xF] = 1;
                         }
-                        if (display[x + xline + ((y + yline) * 64)] == 0) {
+                        if (display[x + xline + ((y + yline) * 64)] == 0) {     // X-OR with check rather than operation
                             draw(static_cast<u_int16_t>(x + xline), static_cast<u_int16_t>(y + yline));
                             display[x + xline + ((y + yline) * 64)] ^= 1;
                         }
@@ -233,6 +230,7 @@ void chip8::emulate(int i) {
             }
             break;
         case 0xF000:
+            std::cout << "Current PC: " << pc << " Opcode: " << (opcode) << std::endl;
             switch (opcode & 0x00FF) {
                 case 0x0007:        // FR07, Get delay timer into VR
                     // TODO
@@ -251,7 +249,7 @@ void chip8::emulate(int i) {
                     pc += 2;
                     break;
                 case 0x001E:        // FR1E, Add register VR to the index register
-                    // TODO
+                    ip += register_store[(opcode & 0x0F00) / 256];
                     pc += 2;
                     break;
                 case 0x0029:        // FR29, Point IR to the sprite for hex char in vr
@@ -259,21 +257,26 @@ void chip8::emulate(int i) {
                     pc += 2;
                     break;
                 case 0x0033:        // FR33, Store the bcd representation of register VR at location IR, IR + 1, IR + 2
-                    memory[ip] = register_store[(opcode & 0x0F00) >> 8] / 100;
-                    memory[ip + 1] = (register_store[(opcode & 0x0F00) >> 8] / 10) % 10;
-                    memory[ip + 2] = (register_store[(opcode & 0x0F00) >> 8] % 100) % 10;
+                    memory[ip] = static_cast<u_int8_t>(register_store[(opcode & 0x0F00) >> 8] / 100);
+                    memory[ip + 1] = static_cast<u_int8_t>((register_store[(opcode & 0x0F00) >> 8] / 10) % 10);
+                    memory[ip + 2] = static_cast<u_int8_t>((register_store[(opcode & 0x0F00) >> 8] % 100) % 10);
                     pc += 2;
                     break;
                 case 0x0055:        // FR55, Store registers V0-VR at location IR onwards
-                    // TODO
+                    for(u_int8_t j = 0; j < (opcode & 0x0F00); j++){
+                        memory[ip+j] = register_store[j];
+                    }
                     pc += 2;
                     break;
                 case 0x0065:        // FR65, Load registers V0, VR from locations IR onwards
-                    // TODO
+                    for(u_int8_t k = 0; k < (opcode & 0x0F00); k++){
+                        register_store[k] =  memory[ip+k];
+                    }
                     pc += 2;
                     break;
                 default:
                     std::cout << "No such opcode" << std::endl;
+                    failedpc = true;
                     pc += 2;
             }
             break;
@@ -282,6 +285,10 @@ void chip8::emulate(int i) {
             std::cout << "No such instruction at " << pc << " OPCODE: " << opcode << std::endl;
             pc += 2;
             break;
+    }
+    if(failedpc){
+        //std::cout << "Current PC: " << pc << " Opcode: " << (opcode) << std::endl;
+        failedpc = false;
     }
 }
 
@@ -307,4 +314,8 @@ void chip8::updateRender() {
     SDL_RenderClear(renderer);
     SDL_RenderCopy(renderer, texture, NULL, NULL);
     SDL_RenderPresent(renderer);
+}
+
+SDL_Event chip8::getKeyboardEvent() {
+
 }

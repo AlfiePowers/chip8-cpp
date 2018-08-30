@@ -10,3 +10,5 @@ tetris\.c8
 test\.chip
 
 CMakeLists\.txt
+
+roms/
